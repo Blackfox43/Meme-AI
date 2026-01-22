@@ -1,0 +1,7 @@
+{
+  "name": "MemeAI",
+  "description": "An AI-powered meme creator that turns your photos into viral content using advanced context-aware captioning and trending templates.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

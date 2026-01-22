@@ -1,0 +1,90 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>MemeAI - AI Powered Meme Factory</title>
+    
+    <!-- PWA & Mobile Optimization -->
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="/manifest.json">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Inter:wght@400;600;800;900&display=swap');
+      
+      :root {
+        --safe-area-inset-top: env(safe-area-inset-top);
+        --safe-area-inset-bottom: env(safe-area-inset-bottom);
+      }
+
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #0f172a;
+        color: white;
+        overflow-x: hidden;
+        /* Prevent elastic scroll on iOS to feel more like an app */
+        position: fixed;
+        width: 100%;
+        height: 100%;
+      }
+
+      #root {
+        height: 100%;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .meme-font {
+        font-family: 'Bangers', cursive;
+        letter-spacing: 0.05em;
+        -webkit-text-stroke: 1.5px black;
+      }
+
+      /* Haptic Simulation for buttons */
+      button:active {
+        transform: scale(0.96);
+      }
+
+      /* Native-like scrollbar */
+      ::-webkit-scrollbar {
+        width: 0px;
+      }
+
+      /* AI Magic Animation */
+      @keyframes gradient-pulse {
+        0% { transform: scale(1) rotate(0deg); opacity: 0.5; }
+        50% { transform: scale(1.2) rotate(180deg); opacity: 0.8; }
+        100% { transform: scale(1) rotate(360deg); opacity: 0.5; }
+      }
+
+      .magic-ring {
+        animation: gradient-pulse 4s linear infinite;
+      }
+
+      /* Safe Area Paddings */
+      .pt-safe { padding-top: var(--safe-area-inset-top); }
+      .pb-safe { padding-bottom: var(--safe-area-inset-bottom); }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://esm.sh/@google/genai@^1.37.0",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/client": "https://esm.sh/react-dom@^19.2.3/client",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+  }
+}
+</script>
+</head>
+<body>
+    <div id="root"></div>
+</body>
+</html>
