@@ -1,0 +1,108 @@
+name: CI – Build & Verify
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+# Cancel in-progress runs of the same workflow on the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  # Dummy values so the build does not fail when env vars are referenced at module load.
+  # Real secrets must be set in repository Settings → Secrets and variables → Actions.
+  GEMINI_API_KEY: "ci-dummy-key"
+  PAYPAL_ENV: "sandbox"
+  PADDLE_ENVIRONMENT: "sandbox"
+
+jobs:
+  build:
+    name: Install, Build & Upload Artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check (optional, non-blocking)
+        run: npx tsc --noEmit || true
+        continue-on-error: true
+
+      - name: Build (Vite client + esbuild server)
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Verify build outputs
+        run: |
+          echo "=== dist/ contents ==="
+          ls -la dist/
+          test -f dist/index.html || (echo "Missing dist/index.html" && exit 1)
+          test -f dist/server.cjs || (echo "Missing dist/server.cjs" && exit 1)
+          echo "Build verification passed."
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: memeai-dist-${{ github.sha }}
+          path: |
+            dist/
+            public/
+            package.json
+            package-lock.json
+          retention-days: 7
+
+  # Optional: smoke-test that the production server starts
+  smoke:
+    name: Smoke – Production server starts
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name != 'pull_request' || true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install production dependencies only
+        run: npm ci --omit=dev
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: memeai-dist-${{ github.sha }}
+          path: .
+
+      - name: Start server & health-check
+        env:
+          NODE_ENV: production
+          PORT: 3000
+          GEMINI_API_KEY: "ci-dummy-key"
+        run: |
+          node dist/server.cjs &
+          SERVER_PID=$!
+          sleep 3
+          curl -sf http://localhost:3000/api/health || (kill $SERVER_PID; exit 1)
+          echo "Health check OK"
+          kill $SERVER_PID || true
