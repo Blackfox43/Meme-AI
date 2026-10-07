@@ -7,12 +7,25 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
+.pnp
+.pnp.js
+
+# Build outputs
 dist
 dist-ssr
+build
 *.local
 
-# Editor directories and files
+# Environment & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editor / OS
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -22,3 +35,21 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+*~
+
+# Test / coverage
+coverage
+*.lcov
+.nyc_output
+
+# Optional tooling
+.turbo
+.cache
+*.tsbuildinfo
+
+# Bun (prefer npm lock for CI consistency)
+bun.lock
+bun.lockb
+
+# Local DB mutations (keep the seed file if you want)
+# memes-db.json
