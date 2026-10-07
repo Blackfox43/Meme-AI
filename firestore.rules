@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Health / connection test document for client verification
+    match /test/{docId} {
+      allow read: if true;
+    }
+
+    // Public Community Memes Collection
+    match /memes/{memeId} {
+      // Anyone can read and browse public memes
+      allow get, list: if true;
+
+      // Anyone (authenticated or guest community creator) can create memes with valid required fields
+      allow create: if request.resource.data.id is string
+        && request.resource.data.imageUrl is string
+        && request.resource.data.creator is string;
+
+      // Anyone can update community engagement (likes, emoji reactions, comments)
+      allow update: if true;
+
+      // Deletion allowed for creator or open testing
+      allow delete: if true;
+    }
+
+    // Private User Profiles for cross-device synchronization
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}

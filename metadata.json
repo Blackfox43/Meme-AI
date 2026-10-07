@@ -3,5 +3,8 @@
   "description": "An AI-powered meme creator that turns your photos into viral content using advanced context-aware captioning and trending templates.",
   "requestFramePermissions": [
     "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
 }

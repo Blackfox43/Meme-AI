@@ -1,421 +1,677 @@
-
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Layout } from './components/Layout';
-import { HumorStyle, MemeLayout, Meme, UserSettings, FeedItem, Ad } from './types';
-import { MOCK_FEED, MOCK_ADS } from './constants';
-import { MemeCanvas } from './components/MemeCanvas';
-import { SponsoredPost } from './components/SponsoredPost';
-import { geminiService } from './services/geminiService';
-
-declare global {
-  interface Window {
-    html2canvas: any;
-  }
-}
-
-const AI_PROMPT_SUGGESTIONS = [
-  "A cyberpunk cat hacking a neon mainframe",
-  "A tiny hamster holding a giant pizza slice",
-  "Medieval knight struggling with a self-checkout",
-  "Gold retriever as a professional chef",
-  "Robots having a picnic on Mars"
-];
-
-const DEFAULT_SETTINGS: UserSettings = {
-  handle: 'MemeCreator_42',
-  isPro: false,
-  hasOnboarded: false,
-  theme: 'dark',
-  blockedCreators: []
-};
+import React, { useState, useEffect, useMemo } from "react";
+import { onAuthStateChanged, User } from "firebase/auth";
+import { Layout } from "./components/Layout";
+import { FeedTab } from "./components/FeedTab";
+import { CreateTab } from "./components/CreateTab";
+import { LeadersTab } from "./components/LeadersTab";
+import { ProfileTab } from "./components/ProfileTab";
+import { SettingsModal } from "./components/SettingsModal";
+import { PricingModal } from "./components/PricingModal";
+import { Meme, DailyChallenge } from "./types";
+import { geminiService } from "./services/geminiService";
+import { getTodayDailyChallenge, MOCK_FEED } from "./constants";
+import {
+  auth,
+  loginWithGoogle,
+  logoutUser,
+  loginAnonymously,
+  fetchMemesFromCloud,
+  subscribeMemesFromCloud,
+  createMemeInCloud,
+  likeMemeInCloud,
+  reactMemeInCloud,
+  commentMemeInCloud,
+  deleteMemeInCloud,
+  fetchUserProfile,
+  saveUserProfile,
+} from "./src/firebase";
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'feed' | 'create' | 'leaders' | 'profile' | 'settings'>('feed');
-  const [feed, setFeed] = useState<Meme[]>([]);
-  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
-  
-  // Editor State
+  const [activeTab, setActiveTab] = useState<"feed" | "create" | "leaders" | "profile">("feed");
+  const [feed, setFeed] = useState<Meme[]>(() => {
+    try {
+      const cached = localStorage.getItem("memeai_cached_feed");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return MOCK_FEED;
+  });
+  const [isPro, setIsPro] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("memeai_is_pro") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const handleUpgradeSuccess = (
+    plan: "monthly" | "annual" | "points",
+    bonusPoints?: number,
+    provider: "paddle" | "paypal" | "points" = "paddle"
+  ) => {
+    setIsPro(true);
+    try {
+      localStorage.setItem("memeai_is_pro", "true");
+      localStorage.setItem("memeai_pro_provider", provider);
+    } catch {}
+
+    if (bonusPoints) {
+      setUserPoints((prev) => {
+        const next = Math.max(0, prev + bonusPoints);
+        try {
+          localStorage.setItem("memeai_user_points", next.toString());
+        } catch {}
+        return next;
+      });
+    }
+
+    if (authUser?.uid) {
+      saveUserProfile(authUser.uid, {
+        isPro: true,
+        proPlan: plan,
+        proProvider: provider,
+        proExpiresAt: Date.now() + (plan === "monthly" ? 30 : 365) * 24 * 60 * 60 * 1000,
+      }).catch((e) => console.warn("Could not sync pro status to cloud:", e));
+    }
+  };
+
+  // Firebase Auth user state
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+
+  // Profile Username (persisted in localStorage and Firestore)
+  const [username, setUsername] = useState<string>(() => {
+    return localStorage.getItem("memeai_username") || "MemePioneer";
+  });
+
+  // User Points System & Daily Challenge completion records
+  const [userPoints, setUserPoints] = useState<number>(() => {
+    const saved = localStorage.getItem("memeai_user_points");
+    return saved ? parseInt(saved, 10) : 250;
+  });
+
+  const [completedChallenges, setCompletedChallenges] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("memeai_completed_challenges");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [activeChallenge, setActiveChallenge] = useState<DailyChallenge | null>(null);
+
+  const todayChallenge = useMemo(() => getTodayDailyChallenge(), []);
+  const isChallengeCompletedToday = completedChallenges.includes(todayChallenge.dateKey);
+
+  // Creation State helpers (passed down so remixing is fluent)
   const [editorImage, setEditorImage] = useState<string | null>(null);
-  const [topText, setTopText] = useState('Top Text');
-  const [bottomText, setBottomText] = useState('Bottom Text');
-  const [humorStyle, setHumorStyle] = useState<HumorStyle>(HumorStyle.Relatable);
-  const [layout, setLayout] = useState<MemeLayout>(MemeLayout.TopBottom);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [userPrompt, setUserPrompt] = useState('');
-  const [aiImagePrompt, setAiImagePrompt] = useState('');
-  const [showCelebration, setShowCelebration] = useState(false);
-  const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [editorVideo, setEditorVideo] = useState<string | null>(null);
 
-  // Memoized current interstitial ad
-  const currentAd = useMemo(() => MOCK_ADS[Math.floor(Math.random() * MOCK_ADS.length)], [isGenerating, isGeneratingImage]);
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const memeRef = useRef<HTMLDivElement>(null);
+  // 1. Firebase Auth listener & Profile Sync
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setAuthUser(user);
+        if (!user.isAnonymous && user.displayName) {
+          setUsername(user.displayName);
+          localStorage.setItem("memeai_username", user.displayName);
+        }
 
-  // Stats for the Profile
-  const userMemes = useMemo(() => 
-    feed.filter(m => m.creator === settings.handle), 
-    [feed, settings.handle]
-  );
-  
-  const totalImpact = useMemo(() => 
-    userMemes.reduce((acc, m) => acc + m.likes, 0), 
-    [userMemes]
-  );
-
-  // Filter out content from blocked creators and interleave ads
-  const processedFeed = useMemo(() => {
-    const visibleMemes = feed.filter(m => !settings.blockedCreators.includes(m.creator));
-    
-    if (settings.isPro) return visibleMemes;
-    
-    const items: FeedItem[] = [];
-    visibleMemes.forEach((meme, index) => {
-      items.push(meme);
-      if ((index + 1) % 2 === 0) {
-        const adIndex = (Math.floor(index / 2)) % MOCK_ADS.length;
-        items.push(MOCK_ADS[adIndex]);
+        // Restore or initialize user profile from Firestore Cloud Database
+        try {
+          setIsSyncingCloud(true);
+          const cloudProfile = await fetchUserProfile(user.uid);
+          if (cloudProfile) {
+            if (typeof cloudProfile.points === "number") {
+              setUserPoints(cloudProfile.points);
+              localStorage.setItem("memeai_user_points", String(cloudProfile.points));
+            }
+            if (cloudProfile.isPro) {
+              setIsPro(true);
+            }
+            if (Array.isArray(cloudProfile.completedChallenges)) {
+              setCompletedChallenges(cloudProfile.completedChallenges);
+              localStorage.setItem(
+                "memeai_completed_challenges",
+                JSON.stringify(cloudProfile.completedChallenges)
+              );
+            }
+            if (cloudProfile.username) {
+              setUsername(cloudProfile.username);
+              localStorage.setItem("memeai_username", cloudProfile.username);
+            }
+          } else {
+            // First time this user signed in: save existing local progress to cloud
+            await saveUserProfile(user.uid, {
+              username: user.displayName || username,
+              points: userPoints,
+              isPro,
+              completedChallenges,
+            });
+          }
+        } catch (err) {
+          console.warn("Cloud profile sync note:", err);
+        } finally {
+          setIsSyncingCloud(false);
+        }
+      } else {
+        // Auto-authenticate anonymously if not logged in so Firestore security rules allow reads/writes
+        loginAnonymously().catch((err) => {
+          console.warn("Anonymous auth init note:", err);
+        });
       }
     });
-    return items;
-  }, [feed, settings.isPro, settings.blockedCreators]);
 
-  useEffect(() => {
-    const savedFeed = localStorage.getItem('memeai_feed_v5');
-    const savedSettings = localStorage.getItem('memeai_settings_v5');
-    if (savedFeed) setFeed(JSON.parse(savedFeed));
-    else setFeed(MOCK_FEED);
-    if (savedSettings) setSettings(JSON.parse(savedSettings));
+    return () => unsubscribe();
   }, []);
 
+  // Handle redirect returns from PayPal Checkout
   useEffect(() => {
-    localStorage.setItem('memeai_feed_v5', JSON.stringify(feed));
-    localStorage.setItem('memeai_settings_v5', JSON.stringify(settings));
-  }, [feed, settings]);
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setEditorImage(event.target?.result as string);
-        setActiveTab('create');
-        generateCaptions(event.target?.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const generateAIBaseImage = async () => {
-    if (!aiImagePrompt.trim()) return;
-    setIsGeneratingImage(true);
     try {
-      const img = await geminiService.generateBaseImage(aiImagePrompt);
-      if (img) {
-        setEditorImage(img);
-        await generateCaptions(img);
+      const params = new URLSearchParams(window.location.search);
+      const paypalStatus = params.get("paypal");
+      const checkoutStatus = params.get("checkout");
+      const orderToken = params.get("token") || params.get("order_id");
+      const planParam = (params.get("plan") as "annual" | "monthly") || "annual";
+
+      if (paypalStatus === "success" || checkoutStatus === "success") {
+        const verifyPayPal = async () => {
+          if (orderToken) {
+            try {
+              const res = await fetch("/api/paypal/capture-order", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ orderId: orderToken, plan: planParam, uid: authUser?.uid }),
+              });
+              const data = await res.json();
+              if (data.success) {
+                const bonus = data.bonusPoints || (planParam === "annual" ? 500 : 100);
+                handleUpgradeSuccess(planParam, bonus);
+                showToast(`🎉 PayPal Payment Confirmed! Welcome to MemeAI Pro! 👑 (+${bonus} pts)`);
+              } else {
+                handleUpgradeSuccess(planParam, 500);
+                showToast("🎉 Welcome to MemeAI Pro! 👑");
+              }
+            } catch {
+              handleUpgradeSuccess(planParam, 500);
+              showToast("🎉 Welcome to MemeAI Pro! 👑");
+            }
+          } else {
+            handleUpgradeSuccess(planParam, 500);
+            showToast("🎉 Welcome to MemeAI Pro! 👑");
+          }
+
+          // Clean up URL query parameters without reloading
+          const cleanUrl = window.location.origin + window.location.pathname;
+          window.history.replaceState({}, document.title, cleanUrl);
+        };
+
+        verifyPayPal();
+      } else if (paypalStatus === "cancel" || checkoutStatus === "cancel") {
+        showToast("PayPal checkout was canceled. You can upgrade anytime! ✨");
+        const cleanUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+    } catch (e) {
+      console.warn("Could not parse PayPal URL params:", e);
+    }
+  }, [authUser]);
+
+  // 2. Real-time Cloud Database Feed Listener & Fallback Seeding
+  useEffect(() => {
+    let isMounted = true;
+
+    // Real-time listener for Firestore changes across all clients/tabs
+    const unsubscribe = subscribeMemesFromCloud(
+      (cloudMemes) => {
+        if (isMounted && cloudMemes.length > 0) {
+          setFeed(cloudMemes);
+          try {
+            localStorage.setItem("memeai_cached_feed", JSON.stringify(cloudMemes.slice(0, 50)));
+          } catch (e) {}
+        }
+      },
+      (err) => {
+        console.warn("Firestore subscription notice, falling back to local cache/REST:", err);
+      }
+    );
+
+    // Initial load: check Firestore, seed from /api/memes if first-time run
+    const initCloudData = async () => {
+      try {
+        const cloudMemes = await fetchMemesFromCloud();
+        if (cloudMemes.length > 0) {
+          if (isMounted) {
+            setFeed(cloudMemes);
+            try {
+              localStorage.setItem("memeai_cached_feed", JSON.stringify(cloudMemes.slice(0, 50)));
+            } catch (e) {}
+          }
+        } else {
+          // Empty Firestore: fetch seed data from server and seed into cloud
+          const localMemes = await fetchFeed();
+          if (localMemes && localMemes.length > 0) {
+            if (isMounted) setFeed(localMemes);
+            // Seed to cloud in background
+            for (const m of localMemes) {
+              createMemeInCloud(m).catch(() => {});
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Initial cloud memes fetch error, using local/cached:", err);
+        if (isMounted) fetchFeed();
+      }
+    };
+
+    initCloudData();
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  // Fetch memes via local API with retries and graceful fallback
+  const fetchFeed = async (retryCount = 2): Promise<Meme[]> => {
+    try {
+      const res = await fetch("/api/memes");
+      if (res.ok) {
+        const data: Meme[] = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setFeed(data);
+          try {
+            localStorage.setItem("memeai_cached_feed", JSON.stringify(data.slice(0, 50)));
+          } catch (e) {}
+          return data;
+        }
       }
     } catch (err) {
-      alert("AI Studio is busy.");
-    } finally {
-      setIsGeneratingImage(false);
+      if (retryCount > 0) {
+        await new Promise((r) => setTimeout(r, 800));
+        return fetchFeed(retryCount - 1);
+      }
+      console.warn("Meme feed using cached/offline dataset.");
+    }
+    return MOCK_FEED;
+  };
+
+  const handleUsernameChange = (newUsername: string) => {
+    setUsername(newUsername);
+    localStorage.setItem("memeai_username", newUsername);
+    if (authUser?.uid) {
+      saveUserProfile(authUser.uid, { username: newUsername }).catch(() => {});
     }
   };
 
-  const generateCaptions = async (forcedImage?: string) => {
-    const targetImage = forcedImage || editorImage;
-    if (!targetImage) return;
-    setIsGenerating(true);
+  // Google Sign-In & Out Handlers
+  const handleLoginGoogle = async () => {
     try {
-      const result = await geminiService.generateMemeCaption(targetImage, humorStyle, userPrompt);
-      setTopText(result.topText);
-      setBottomText(result.bottomText);
+      const user = await loginWithGoogle();
+      if (user) {
+        showToast(`Welcome ${user.displayName || "Creator"}! Synced with Cloud 🚀`);
+      }
+    } catch (err: any) {
+      console.error("Google login error:", err);
+      showToast("Google sign-in canceled or closed.");
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+      setAuthUser(null);
+      showToast("Signed out. Reconnecting anonymously...");
+      loginAnonymously().catch(() => {});
     } catch (err) {
-      setTopText("AI Engine Error");
-    } finally {
-      setIsGenerating(false);
+      console.error("Logout error:", err);
     }
   };
 
-  const handleDownload = async () => {
-    if (!memeRef.current || !window.html2canvas) return;
-    setIsDownloading(true);
+  // Like a meme on Cloud Database & server
+  const handleLike = async (id: string) => {
+    // Optimistic UI update
+    setFeed((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, likes: (m.likes || 0) + 1 } : m))
+    );
+
     try {
-      const canvas = await window.html2canvas(memeRef.current, { useCORS: true, scale: 2 });
-      const link = document.createElement('a');
-      link.download = `MemeAI_${Date.now()}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-    } catch (error) {
-      alert('Error rendering image.');
-    } finally {
-      setIsDownloading(false);
+      // 1. Update Firestore Cloud Database
+      await likeMemeInCloud(id);
+      // 2. Also notify local server
+      fetch(`/api/memes/${id}/like`, { method: "POST" }).catch(() => {});
+    } catch (err) {
+      console.error("Error liking meme in cloud:", err);
     }
   };
 
-  const publishMeme = () => {
-    if (!editorImage) return;
-    const newMeme: Meme = {
-      id: Date.now().toString(),
-      imageUrl: editorImage,
-      topText,
-      bottomText,
-      humorStyle,
-      layout,
-      likes: 0,
-      creator: settings.handle,
+  // Add emoji reaction
+  const handleReact = async (id: string, emoji: string) => {
+    setFeed((prev) =>
+      prev.map((m) => {
+        if (m.id !== id) return m;
+        const currentReactions = { ...(m.reactions || {}) };
+        currentReactions[emoji] = (currentReactions[emoji] || 0) + 1;
+        return { ...m, reactions: currentReactions };
+      })
+    );
+
+    try {
+      // 1. Update Cloud Database
+      await reactMemeInCloud(id, emoji);
+      // 2. Also notify local server
+      geminiService.reactToMeme(id, emoji).catch(() => {});
+    } catch (err) {
+      console.error("Error reacting in cloud:", err);
+    }
+  };
+
+  // Add text comment
+  const handleComment = async (id: string, text: string) => {
+    const newComment = {
+      id: `c_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      author: username,
+      text: text.trim(),
       timestamp: Date.now(),
-      isProMeme: settings.isPro,
-      type: 'meme'
     };
-    setFeed([newMeme, ...feed]);
-    setShowCelebration(true);
-    setTimeout(() => {
-      setShowCelebration(false);
-      setActiveTab('feed');
+
+    setFeed((prev) =>
+      prev.map((m) => {
+        if (m.id !== id) return m;
+        return { ...m, comments: [...(m.comments || []), newComment] };
+      })
+    );
+
+    try {
+      // 1. Update Cloud Database
+      await commentMemeInCloud(id, newComment);
+      // 2. Also notify local server
+      geminiService.commentOnMeme(id, username, text).catch(() => {});
+    } catch (err) {
+      console.error("Error adding comment to cloud:", err);
+    }
+  };
+
+  // Delete meme
+  const handleDelete = async (id: string) => {
+    setFeed((prev) => prev.filter((m) => m.id !== id));
+    showToast("Meme deleted 🗑️");
+
+    try {
+      // 1. Delete from Cloud Database
+      await deleteMemeInCloud(id);
+      // 2. Delete from local server
+      geminiService.deleteMeme(id).catch(() => {});
+    } catch (err) {
+      console.error("Error deleting meme from cloud:", err);
+    }
+  };
+
+  // Remix a meme
+  const handleRemix = (meme: Meme) => {
+    if (
+      meme.imageUrl.endsWith(".mp4") ||
+      meme.imageUrl.startsWith("blob:") ||
+      meme.imageUrl.includes("veo")
+    ) {
+      setEditorVideo(meme.imageUrl);
       setEditorImage(null);
-    }, 1500);
+    } else {
+      setEditorImage(meme.imageUrl);
+      setEditorVideo(null);
+    }
+    setActiveTab("create");
+    showToast("Loaded meme into studio ✨");
   };
 
-  const blockCreator = (creator: string) => {
-    if (creator === settings.handle) return;
-    setSettings(s => ({ ...s, blockedCreators: [...s.blockedCreators, creator] }));
-    setActiveMenu(null);
-    alert(`User @${creator} blocked. They won't appear in your feed anymore.`);
+  // Accept a Daily Challenge
+  const handleAcceptChallenge = (challenge: DailyChallenge) => {
+    setActiveChallenge(challenge);
+    if (challenge.suggestedTemplateUrl) {
+      setEditorImage(challenge.suggestedTemplateUrl);
+      setEditorVideo(null);
+    }
+    setActiveTab("create");
+    showToast(`⚡ Daily Challenge Mode: ${challenge.theme}`);
   };
 
-  const reportPost = (memeId: string) => {
-    alert("Post reported to moderation. We'll review it within 24 hours.");
-    setActiveMenu(null);
-  };
+  // Publish a new meme to Cloud Database & server
+  const handlePublish = async (newMemeData: any) => {
+    // Strip any undefined keys so neither Firestore nor JSON encoders ever fail
+    const sanitizedInput: Record<string, any> = {};
+    for (const [key, value] of Object.entries(newMemeData)) {
+      if (value !== undefined) {
+        sanitizedInput[key] = value;
+      }
+    }
 
-  const isAnyAiTaskRunning = isGenerating || isGeneratingImage;
+    const memePayload: Meme = {
+      ...sanitizedInput,
+      id: Date.now().toString(),
+      creator: username || "Anonymous",
+      creatorUid: authUser?.uid || "anon",
+      likes: 0,
+      timestamp: Date.now(),
+      reactions: { "🔥": 1, "😂": 1 },
+      comments: [],
+    } as Meme;
+
+    try {
+      // 1. Save directly to Cloud Firestore
+      await createMemeInCloud(memePayload);
+
+      // 2. Also sync to local backend for full backup
+      fetch("/api/memes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(memePayload),
+      }).catch(() => {});
+
+      // Optimistic addition with deduplication
+      setFeed((prev) => {
+        const filtered = prev.filter((m) => m.id !== memePayload.id);
+        return [memePayload, ...filtered];
+      });
+      setEditorImage(null);
+      setEditorVideo(null);
+
+      // Evaluate Daily Challenge Rewards
+      const isChallenge =
+        newMemeData.isChallengeEntry ||
+        (activeChallenge && activeChallenge.theme === newMemeData.challengeTheme);
+
+      if (isChallenge) {
+        if (!isChallengeCompletedToday) {
+          const reward = todayChallenge.rewardPoints || 250;
+          const updatedPoints = userPoints + reward;
+          setUserPoints(updatedPoints);
+          localStorage.setItem("memeai_user_points", String(updatedPoints));
+
+          const updatedCompleted = [...completedChallenges, todayChallenge.dateKey];
+          setCompletedChallenges(updatedCompleted);
+          localStorage.setItem(
+            "memeai_completed_challenges",
+            JSON.stringify(updatedCompleted)
+          );
+
+          // Reward special Pro badge and status!
+          setIsPro(true);
+
+          // Save points and badges to Cloud Firestore
+          if (authUser?.uid) {
+            saveUserProfile(authUser.uid, {
+              points: updatedPoints,
+              isPro: true,
+              completedChallenges: updatedCompleted,
+            }).catch(() => {});
+          }
+
+          showToast(`🎉 Daily Challenge Won! +${reward} Points & Pro Badge Unlocked! 👑`);
+        } else {
+          const updatedPoints = userPoints + 50;
+          setUserPoints(updatedPoints);
+          localStorage.setItem("memeai_user_points", String(updatedPoints));
+
+          if (authUser?.uid) {
+            saveUserProfile(authUser.uid, { points: updatedPoints }).catch(() => {});
+          }
+
+          showToast("🔥 +50 Bonus Points for Daily Challenge Entry!");
+        }
+        setActiveChallenge(null);
+      } else {
+        showToast("Meme published live to Cloud Feed! 🚀");
+      }
+
+      setActiveTab("feed");
+    } catch (err) {
+      console.error("Error publishing meme to cloud:", err);
+      // Fallback: post to server
+      fetch("/api/memes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(memePayload),
+      })
+        .then((res) => res.json())
+        .then((saved) => {
+          setFeed((prev) => {
+            const filtered = prev.filter((m) => m.id !== saved.id);
+            return [saved, ...filtered];
+          });
+          setActiveTab("feed");
+          showToast("Meme published live! 🚀");
+        })
+        .catch(() => {
+          showToast("Failed to publish meme. Please retry.");
+        });
+    }
+  };
 
   return (
-    <Layout activeTab={activeTab as any} setActiveTab={setActiveTab as any} isPro={settings.isPro}>
-      {/* AI Processing Overlay */}
-      {isAnyAiTaskRunning && (
-        <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-2xl px-8 text-center animate-in fade-in">
-          <div className="relative mb-10">
-            <div className="w-44 h-44 rounded-full bg-gradient-to-tr from-purple-500 via-blue-500 to-pink-500 magic-ring opacity-30"></div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <i className="fa-solid fa-wand-magic-sparkles text-5xl text-white animate-pulse"></i>
-            </div>
-          </div>
-          <h3 className="text-xl font-black italic tracking-tight uppercase mb-2">Engines Firing</h3>
-          <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em]">Crafting viral potential...</p>
-          {!settings.isPro && (
-            <div className="mt-12 w-full max-w-sm p-6 bg-slate-900 border border-white/10 rounded-[2.5rem] shadow-2xl">
-              <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest block mb-4">Sponsored Message</span>
-              <div className="flex items-center gap-4 text-left">
-                <img src={currentAd.imageUrl} className="w-14 h-14 rounded-xl object-cover" alt="ad" />
-                <div>
-                  <h4 className="text-xs font-black uppercase text-white">{currentAd.title}</h4>
-                  <p className="text-[9px] text-slate-400 mt-1">{currentAd.description}</p>
-                </div>
-              </div>
-            </div>
-          )}
+    <Layout
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      onGoPro={() => setShowUpgradePrompt(true)}
+      onOpenSettings={() => setShowSettingsModal(true)}
+      isPro={isPro}
+      points={userPoints}
+      hasActiveDailyChallenge={!isChallengeCompletedToday}
+      authUser={authUser}
+      onLoginGoogle={handleLoginGoogle}
+    >
+      {/* Global Toast Notification */}
+      {toastMessage && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[140] bg-slate-950/95 border border-purple-500/70 text-purple-200 px-4 py-2 rounded-full shadow-2xl backdrop-blur-md text-xs font-black flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
+          <i className="fa-solid fa-sparkles text-amber-400"></i>
+          <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Post Celebration */}
-      {showCelebration && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-indigo-600/90 backdrop-blur-3xl animate-in zoom-in">
-           <div className="text-center">
-             <i className="fa-solid fa-crown text-9xl text-white animate-bounce mb-4 block"></i>
-             <h2 className="text-5xl font-black italic tracking-tighter uppercase">VIRAL HIT!</h2>
-           </div>
-        </div>
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        username={username}
+        onChangeUsername={handleUsernameChange}
+        isPro={isPro}
+        setIsPro={(val) => {
+          setIsPro(val);
+          try {
+            localStorage.setItem("memeai_is_pro", val ? "true" : "false");
+          } catch {}
+          if (authUser?.uid) {
+            saveUserProfile(authUser.uid, { isPro: val }).catch(() => {});
+          }
+        }}
+        onOpenUpgradeModal={() => setShowUpgradePrompt(true)}
+        onResetFeed={fetchFeed}
+        onToast={showToast}
+      />
+
+      {/* Creator Pro Membership & Monetization Modal */}
+      <PricingModal
+        isOpen={showUpgradePrompt}
+        onClose={() => setShowUpgradePrompt(false)}
+        isPro={isPro}
+        onUpgradeSuccess={handleUpgradeSuccess}
+        userPoints={userPoints}
+        onToast={showToast}
+        authUser={authUser}
+      />
+
+      {/* Active Tab Router */}
+      {activeTab === "feed" && (
+        <FeedTab
+          feed={feed}
+          onLike={handleLike}
+          onReact={handleReact}
+          onComment={handleComment}
+          onRemix={handleRemix}
+          onDelete={handleDelete}
+          currentUser={username}
+          isPro={isPro}
+          onToast={showToast}
+        />
       )}
 
-      {/* Onboarding */}
-      {!settings.hasOnboarded && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/95 backdrop-blur-3xl">
-          <div className="bg-slate-900 border border-slate-800 rounded-[4rem] p-12 text-center shadow-2xl max-w-sm">
-             <div className="w-24 h-24 rounded-[2.5rem] bg-gradient-to-tr from-purple-500 to-pink-500 mx-auto flex items-center justify-center text-5xl mb-8">⚡</div>
-             <h2 className="text-4xl font-black italic uppercase mb-4 leading-tight">MemeAI</h2>
-             <p className="text-slate-400 text-sm mb-10">Instant AI memes for the digital age.</p>
-             <button onClick={() => setSettings(s => ({ ...s, hasOnboarded: true }))} className="w-full bg-white text-slate-950 py-5 rounded-[2rem] font-black uppercase tracking-widest text-xs">LAUNCH STUDIO</button>
-          </div>
-        </div>
+      {activeTab === "create" && (
+        <CreateTab
+          onPublish={handlePublish}
+          editorImage={editorImage}
+          setEditorImage={setEditorImage}
+          editorVideo={editorVideo}
+          setEditorVideo={setEditorVideo}
+          onToast={showToast}
+          activeChallenge={activeChallenge}
+          onClearActiveChallenge={() => setActiveChallenge(null)}
+          isPro={isPro}
+          onOpenUpgradeModal={() => setShowUpgradePrompt(true)}
+        />
       )}
 
-      {/* Feed */}
-      {activeTab === 'feed' && (
-        <div className="p-4 space-y-10 pb-32">
-          <div className="flex items-center justify-between pt-safe px-2">
-            <h2 className="text-2xl font-black tracking-tighter uppercase italic">LIVE SIGNAL</h2>
-            <div className="bg-white/10 text-white px-4 py-1 rounded-full text-[9px] font-black uppercase tracking-widest">GLOBAL</div>
-          </div>
-          
-          {processedFeed.map((item, idx) => {
-            if (item.type === 'ad') return <SponsoredPost key={`ad-${item.id}-${idx}`} ad={item as Ad} onUpgrade={() => setActiveTab('settings')} />;
-            
-            const meme = item as Meme;
-            return (
-              <div key={meme.id} className="bg-slate-800/30 rounded-[3rem] p-6 border border-slate-700/20 space-y-5 backdrop-blur-md relative">
-                <div className="flex items-center justify-between px-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-[1rem] bg-slate-700 flex items-center justify-center font-black">{meme.creator[0].toUpperCase()}</div>
-                    <div>
-                      <div className="flex items-center gap-1">
-                        <span className="font-black text-sm block">@{meme.creator}</span>
-                        {meme.isProMeme && <i className="fa-solid fa-circle-check text-blue-400 text-[10px]"></i>}
-                      </div>
-                      <span className="text-[8px] text-slate-500 uppercase font-black">{new Date(meme.timestamp).toLocaleTimeString()}</span>
-                    </div>
-                  </div>
-                  
-                  {/* UGC Options Menu */}
-                  <div className="relative">
-                    <button onClick={() => setActiveMenu(activeMenu === meme.id ? null : meme.id)} className="w-10 h-10 text-slate-600 hover:text-white"><i className="fa-solid fa-ellipsis-v"></i></button>
-                    {activeMenu === meme.id && (
-                      <div className="absolute right-0 top-12 w-48 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
-                        <button onClick={() => reportPost(meme.id)} className="w-full text-left px-5 py-4 text-[10px] font-black uppercase tracking-widest text-orange-400 hover:bg-slate-800 flex items-center gap-3"><i className="fa-solid fa-flag text-xs"></i> Report Post</button>
-                        <button onClick={() => blockCreator(meme.creator)} className="w-full text-left px-5 py-4 text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-slate-800 flex items-center gap-3 border-t border-slate-800"><i className="fa-solid fa-user-slash text-xs"></i> Block User</button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                
-                <MemeCanvas imageUrl={meme.imageUrl} topText={meme.topText} bottomText={meme.bottomText} layout={meme.layout} isPro={meme.isProMeme} />
-                
-                <div className="flex items-center justify-between px-2">
-                  <div className="flex gap-8">
-                    <button onClick={() => setFeed(f => f.map(m => m.id === meme.id ? {...m, likes: m.likes + 1} : m))} className="flex flex-col items-center gap-1 text-slate-400 active:scale-125 transition-transform"><i className="fa-solid fa-heart text-2xl"></i><span className="text-[9px] font-black">{meme.likes}</span></button>
-                    <button onClick={() => { setEditorImage(meme.imageUrl); setActiveTab('create'); }} className="flex flex-col items-center gap-1 text-slate-400"><i className="fa-solid fa-wand-sparkles text-2xl"></i><span className="text-[9px] font-black uppercase">Remix</span></button>
-                  </div>
-                  <button className="w-12 h-12 bg-slate-700/30 rounded-xl flex items-center justify-center text-slate-400"><i className="fa-solid fa-share-nodes text-lg"></i></button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+      {activeTab === "leaders" && (
+        <LeadersTab
+          feed={feed}
+          onLike={handleLike}
+          onRemix={handleRemix}
+          isPro={isPro}
+          currentUser={username}
+          userPoints={userPoints}
+          isChallengeCompletedToday={isChallengeCompletedToday}
+          onAcceptChallenge={handleAcceptChallenge}
+          onToast={showToast}
+        />
       )}
 
-      {/* Creator Tab */}
-      {activeTab === 'create' && (
-        <div className="p-4 space-y-8 pt-safe pb-32">
-          {!editorImage ? (
-            <div className="space-y-8">
-              <h2 className="text-5xl font-black italic uppercase leading-none px-2">THE LAB</h2>
-              <div className="bg-slate-800/40 rounded-[3rem] p-8 space-y-6 border border-slate-700/50">
-                <textarea value={aiImagePrompt} onChange={(e) => setAiImagePrompt(e.target.value)} placeholder="A space explorer holding a cat..." className="w-full bg-slate-900 rounded-[2rem] p-6 text-sm min-h-[140px] resize-none border border-slate-800 focus:outline-none" />
-                <button onClick={generateAIBaseImage} className="w-full bg-indigo-600 py-5 rounded-[2rem] text-xs font-black uppercase tracking-widest shadow-xl">GENERATE BASE</button>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <button onClick={() => fileInputRef.current?.click()} className="aspect-square bg-slate-800/20 border-2 border-dashed border-slate-700/50 rounded-[2.5rem] flex flex-col items-center justify-center gap-4 active:scale-95 transition-all">
-                  <i className="fa-solid fa-upload text-2xl text-indigo-400"></i>
-                  <span className="text-[10px] font-black uppercase tracking-widest">Upload</span>
-                  <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
-                </button>
-                <button onClick={() => cameraInputRef.current?.click()} className="aspect-square bg-slate-800/20 border-2 border-dashed border-slate-700/50 rounded-[2.5rem] flex flex-col items-center justify-center gap-4 active:scale-95 transition-all">
-                  <i className="fa-solid fa-camera text-2xl text-pink-400"></i>
-                  <span className="text-[10px] font-black uppercase tracking-widest">Camera</span>
-                  <input type="file" ref={cameraInputRef} className="hidden" accept="image/*" capture="environment" onChange={handleFileUpload} />
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-8">
-              <div className="flex justify-between items-center px-2">
-                <button onClick={() => setEditorImage(null)} className="w-12 h-12 bg-slate-800 rounded-xl"><i className="fa-solid fa-xmark"></i></button>
-                <button onClick={publishMeme} className="bg-gradient-to-r from-purple-600 to-pink-600 px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest">PUBLISH</button>
-              </div>
-              <div ref={memeRef} className="rounded-[3rem] overflow-hidden shadow-2xl"><MemeCanvas imageUrl={editorImage} topText={topText} bottomText={bottomText} layout={layout} isPro={settings.isPro} /></div>
-              <div className="bg-slate-800/60 p-6 rounded-[3rem] space-y-6">
-                <input value={topText} onChange={(e) => setTopText(e.target.value)} placeholder="Top Text" className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 font-black uppercase text-center focus:outline-none" />
-                <input value={bottomText} onChange={(e) => setBottomText(e.target.value)} placeholder="Bottom Text" className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 font-black uppercase text-center focus:outline-none" />
-                <div className="flex justify-around pt-4">
-                  {Object.values(MemeLayout).map(l => (
-                    <button key={l} onClick={() => setLayout(l)} className={`w-12 h-12 rounded-xl flex items-center justify-center ${layout === l ? 'bg-white text-black' : 'bg-slate-900 text-slate-500'}`}><i className="fa-solid fa-th-large text-lg"></i></button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Leaders View */}
-      {activeTab === 'leaders' && (
-        <div className="p-6 space-y-10 pt-safe pb-32">
-          <h2 className="text-4xl font-black italic uppercase">THE ELITE</h2>
-          <div className="space-y-4">
-            {[...feed].sort((a,b) => b.likes - a.likes).slice(0, 5).map((m, i) => (
-              <div key={m.id} className="flex items-center justify-between p-6 bg-slate-800/20 rounded-[2.5rem] border border-slate-700/10">
-                <div className="flex items-center gap-5">
-                  <span className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center font-black">{i+1}</span>
-                  <span className="font-black italic text-lg">@{m.creator}</span>
-                </div>
-                <div className="text-right">
-                  <p className="font-black text-xl">{m.likes}</p>
-                  <p className="text-[8px] font-black uppercase text-slate-600">IMPACT</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Profile */}
-      {activeTab === 'profile' && (
-        <div className="p-6 space-y-12 pt-safe pb-32">
-          <div className="flex flex-col items-center gap-6">
-            <div className="w-32 h-32 rounded-[2.5rem] bg-gradient-to-br from-purple-600 to-pink-500 p-1"><div className="w-full h-full rounded-[2.3rem] bg-slate-900 flex items-center justify-center text-4xl">🥷</div></div>
-            <h2 className="text-3xl font-black italic uppercase">@{settings.handle}</h2>
-            <div className="flex gap-3">
-              <div className="bg-slate-800 px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest">{userMemes.length} POSTS</div>
-              <div className="bg-slate-800 px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest">{totalImpact} IMPACT</div>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            {userMemes.map(m => (
-              <div key={m.id} className="aspect-square bg-slate-800 rounded-[2rem] overflow-hidden border border-slate-700"><img src={m.imageUrl} className="w-full h-full object-cover" alt="meme" /></div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Settings */}
-      {activeTab === 'settings' && (
-        <div className="p-8 space-y-12 pt-safe pb-32">
-          <h2 className="text-4xl font-black italic uppercase">SYSTEM</h2>
-          
-          <div className="space-y-8">
-            <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest px-4">Identifier</label>
-              <input value={settings.handle} onChange={(e) => setSettings(s => ({ ...s, handle: e.target.value }))} className="w-full bg-slate-800 rounded-[1.5rem] px-6 py-5 font-black text-white focus:outline-none" />
-            </div>
-
-            <div className="bg-blue-900/20 p-8 rounded-[3rem] border border-blue-500/20 flex items-center justify-between">
-              <div>
-                <h4 className="text-lg font-black uppercase italic">Studio Pro</h4>
-                <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">Zero Ads • HD Gen • Support the Lab</p>
-              </div>
-              <button onClick={() => setSettings(s => ({ ...s, isPro: !s.isPro }))} className={`w-16 h-10 rounded-full p-1 transition-all ${settings.isPro ? 'bg-blue-500' : 'bg-slate-700'}`}><div className={`w-8 h-8 rounded-full bg-white transition-all ${settings.isPro ? 'translate-x-6' : 'translate-x-0'}`}></div></button>
-            </div>
-
-            {/* Legal & Safety Compliance Section */}
-            <div className="space-y-4 pt-4 border-t border-slate-800">
-               <h3 className="text-[10px] font-black text-slate-600 uppercase tracking-[0.4em] px-4">Legal & Safety</h3>
-               <div className="grid grid-cols-1 gap-2">
-                 <button className="w-full text-left px-6 py-4 bg-slate-800/40 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-400 flex justify-between items-center">Community Guidelines <i className="fa-solid fa-chevron-right text-[8px]"></i></button>
-                 <button className="w-full text-left px-6 py-4 bg-slate-800/40 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-400 flex justify-between items-center">Privacy Policy <i className="fa-solid fa-chevron-right text-[8px]"></i></button>
-                 <button className="w-full text-left px-6 py-4 bg-slate-800/40 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-400 flex justify-between items-center">Terms of Service <i className="fa-solid fa-chevron-right text-[8px]"></i></button>
-               </div>
-               <div className="p-4 rounded-2xl bg-slate-900/50 border border-slate-800">
-                  <p className="text-[8px] text-slate-500 font-bold uppercase leading-relaxed">By using MemeAI, you agree to our terms. Users found posting prohibited content will be permanently banned. Reports are reviewed by human moderators.</p>
-               </div>
-            </div>
-
-            <button onClick={() => { if(confirm('Reset all data?')) { localStorage.clear(); window.location.reload(); } }} className="w-full py-5 rounded-[2rem] bg-red-600/10 text-red-500 text-[10px] font-black uppercase tracking-widest border border-red-500/20">Wipe Studio Data</button>
-          </div>
-        </div>
+      {activeTab === "profile" && (
+        <ProfileTab
+          feed={feed}
+          username={username}
+          onChangeUsername={handleUsernameChange}
+          onLike={handleLike}
+          onRemix={handleRemix}
+          isPro={isPro}
+          userPoints={userPoints}
+          completedChallengesCount={completedChallenges.length}
+          isChallengeCompletedToday={isChallengeCompletedToday}
+          onNavigateToChallenges={() => setActiveTab("leaders")}
+          onOpenUpgradeModal={() => setShowUpgradePrompt(true)}
+          authUser={authUser}
+          onLoginGoogle={handleLoginGoogle}
+          onLogout={handleLogout}
+          isSyncingCloud={isSyncingCloud}
+        />
       )}
     </Layout>
   );

@@ -1,21 +1,32 @@
 {
   "name": "memeai",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "AI-powered meme creator – context-aware captions, templates, community feed, and Pro billing",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "tsx server.ts",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "NODE_ENV=production node dist/server.cjs",
+    "typecheck": "tsc --noEmit",
+    "preview": "npm run build && npm start"
   },
   "dependencies": {
     "@google/genai": "^1.37.0",
+    "express": "^5.2.1",
+    "firebase": "^12.19.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "esbuild": "^0.28.1",
+    "tsx": "^4.23.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

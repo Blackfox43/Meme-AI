@@ -1,0 +1,51 @@
+{
+  "entities": {
+    "Meme": {
+      "title": "Meme",
+      "description": "Represents a user-created meme with caption, visuals, metadata, and community engagement.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique meme identifier" },
+        "imageUrl": { "type": "string", "description": "Image or video URL of the meme background" },
+        "topText": { "type": "string", "description": "Upper caption text" },
+        "bottomText": { "type": "string", "description": "Lower caption text" },
+        "humorStyle": { "type": "string", "description": "Category or comedic tone of the meme" },
+        "layout": { "type": "string", "description": "Layout style such as classic, modern, or banner" },
+        "creator": { "type": "string", "description": "Display username of the creator" },
+        "creatorUid": { "type": "string", "description": "Firebase Auth UID of the creator" },
+        "likes": { "type": "number", "description": "Total upvotes/likes count" },
+        "timestamp": { "type": "number", "description": "Creation timestamp in milliseconds" },
+        "tags": { "type": "array", "description": "Hashtags and labels" },
+        "isChallengeEntry": { "type": "boolean", "description": "Whether this meme was submitted for a daily challenge" },
+        "challengeTheme": { "type": "string", "description": "Daily challenge theme title if applicable" }
+      },
+      "required": ["id", "imageUrl", "creator", "likes", "timestamp"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Stores user points, pro status, badges, and challenge achievements across devices.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth User ID" },
+        "displayName": { "type": "string", "description": "User handle or display name" },
+        "email": { "type": "string", "description": "User email address if authenticated via Google" },
+        "photoURL": { "type": "string", "description": "Profile picture URL" },
+        "points": { "type": "number", "description": "Total gamified meme points" },
+        "isPro": { "type": "boolean", "description": "Pro subscription / badge status" },
+        "completedChallenges": { "type": "array", "description": "Date keys of completed daily challenges" },
+        "updatedAt": { "type": "number", "description": "Last synced timestamp in milliseconds" }
+      },
+      "required": ["uid", "displayName", "points", "isPro"]
+    }
+  },
+  "firestore": {
+    "/memes/{memeId}": {
+      "schema": { "$ref": "#/entities/Meme" },
+      "description": "Public community meme feed collection"
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User personal cloud profile and cross-device sync data"
+    }
+  }
+}
