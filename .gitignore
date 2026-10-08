@@ -53,3 +53,12 @@ bun.lockb
 
 # Local DB mutations (keep the seed file if you want)
 # memes-db.json
+
+# Capacitor / Android / iOS
+android/
+ios/
+.capacitor/
+*.apk
+*.aab
+*.keystore
+*.jks

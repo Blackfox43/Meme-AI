@@ -123,3 +123,44 @@ Set `PORT` if your platform requires it (default `3000`).
 ## License
 
 MIT – see [LICENSE](LICENSE).
+
+## Android APK (Capacitor)
+
+MemeAI can be packaged as an Android app via [Capacitor](https://capacitorjs.com/).
+
+### CI (automatic)
+
+On every push to `main`, the **Build Android APK** workflow:
+
+1. Builds the web UI (`vite build`)
+2. Adds the Capacitor Android platform
+3. Runs `./gradlew assembleDebug`
+4. Uploads a **debug APK** as a GitHub Actions artifact
+
+Download it from the **Actions** tab → latest **Build Android APK** run → Artifacts → `memeai-debug-apk-…`.
+
+You can also run it manually: **Actions → Build Android APK → Run workflow**.  
+Optional input: `api_base_url` (your deployed Express backend, e.g. `https://your-server.com`).
+
+### Local APK build
+
+```bash
+npm install
+npm run build:web
+npx cap add android    # first time only
+npx cap sync android
+npx cap open android   # opens Android Studio → Build → APK
+# or:
+cd android && ./gradlew assembleDebug
+# APK: android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+### Important: backend for AI features
+
+The APK only contains the **frontend**. Caption / image / video APIs run on the Express server.
+
+1. Deploy the Node server somewhere (Railway, Render, Fly.io, VPS, …).
+2. Set `VITE_API_BASE_URL=https://your-server.com` when building the web assets (or pass `api_base_url` in the workflow).
+3. Ensure CORS on the server allows your app origin (or use `*` for testing).
+
+Without `VITE_API_BASE_URL`, the app UI still loads; AI/API calls need a reachable backend.
