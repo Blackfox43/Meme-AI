@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { User } from "firebase/auth";
 import { paddleService, PaddleConfig } from "../services/paddleService";
+import { apiUrl } from "../src/apiBase";
 
 interface PricingModalProps {
   isOpen: boolean;
@@ -62,7 +63,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     paddleService.initPaddle().catch(() => {});
 
     // Load PayPal configuration
-    fetch("/api/paypal/config")
+    fetch(apiUrl("/api/paypal/config"))
       .then((res) => res.json())
       .then((data: PayPalConfig) => setPaypalConfig(data))
       .catch((err) => console.warn("Could not load PayPal config:", err));
@@ -133,7 +134,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     setIsProcessing(true);
     try {
       const plan = selectedPlan === "points" ? "annual" : selectedPlan;
-      const res = await fetch("/api/paypal/create-order", {
+      const res = await fetch(apiUrl("/api/paypal/create-order"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -173,7 +174,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     }
     setIsProcessing(true);
     try {
-      await fetch("/api/subscription/activate", {
+      await fetch(apiUrl("/api/subscription/activate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

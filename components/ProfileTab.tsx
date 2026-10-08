@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Meme } from "../types";
 import { MemeCanvas } from "./MemeCanvas";
+import { apiUrl } from "../src/apiBase";
 
 interface ProfileTabProps {
   feed: Meme[];
@@ -70,7 +71,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     setIsGeneratingName(true);
     try {
       // Call standard Gemini text endpoint to generate a creative username
-      const response = await fetch("/api/generate-caption", {
+      const response = await fetch(apiUrl("/api/generate-caption"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
