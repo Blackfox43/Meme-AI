@@ -1,7 +1,6 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type, Modality, GenerateVideosOperation } from "@google/genai";
 
 const app = express();
@@ -1255,27 +1254,36 @@ app.post("/api/video-download", async (req, res) => {
   }
 });
 
-// --- VITE MIDDLEWARE OR STATIC SERVER ---
+// --- VITE MIDDLEWARE (dev) OR STATIC SERVER (production) ---
+// Vite is loaded only in development so production builds do not require the vite package.
 
-if (process.env.NODE_ENV !== "production") {
-  createViteServer({
-    server: { middlewareMode: true },
-    appType: "spa",
-  }).then((vite) => {
-    app.use(vite.middlewares);
-    
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Development Server running on http://localhost:${PORT}`);
+async function start() {
+  const port = Number(process.env.PORT) || PORT;
+
+  if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
     });
-  });
-} else {
-  const distPath = path.join(process.cwd(), "dist");
-  app.use(express.static(distPath));
-  app.get("*all", (req, res) => {
-    res.sendFile(path.join(distPath, "index.html"));
-  });
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Production Server running on http://localhost:${PORT}`);
-  });
+    app.use(vite.middlewares);
+    app.listen(port, "0.0.0.0", () => {
+      console.log(`Development Server running on http://localhost:${port}`);
+    });
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    // Express 5 uses "*splat" / named wildcards; "*all" works on recent Express 5
+    app.get("*all", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+    app.listen(port, "0.0.0.0", () => {
+      console.log(`Production Server running on http://localhost:${port}`);
+    });
+  }
 }
+
+start().catch((err) => {
+  console.error("Failed to start server:", err);
+  process.exit(1);
+});
