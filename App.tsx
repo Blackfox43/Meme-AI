@@ -11,6 +11,7 @@ import { Meme, DailyChallenge } from "./types";
 import { geminiService } from "./services/geminiService";
 import { getTodayDailyChallenge, MOCK_FEED } from "./constants";
 import {
+import { apiUrl } from "./src/apiBase";
   auth,
   loginWithGoogle,
   logoutUser,
@@ -189,7 +190,7 @@ export default function App() {
         const verifyPayPal = async () => {
           if (orderToken) {
             try {
-              const res = await fetch("/api/paypal/capture-order", {
+              const res = await fetch(apiUrl("/api/paypal/capture-order"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ orderId: orderToken, plan: planParam, uid: authUser?.uid }),
@@ -286,7 +287,7 @@ export default function App() {
   // Fetch memes via local API with retries and graceful fallback
   const fetchFeed = async (retryCount = 2): Promise<Meme[]> => {
     try {
-      const res = await fetch("/api/memes");
+      const res = await fetch(apiUrl("/api/memes"));
       if (res.ok) {
         const data: Meme[] = await res.json();
         if (Array.isArray(data) && data.length > 0) {
@@ -472,7 +473,7 @@ export default function App() {
       await createMemeInCloud(memePayload);
 
       // 2. Also sync to local backend for full backup
-      fetch("/api/memes", {
+      fetch(apiUrl("/api/memes"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(memePayload),
@@ -538,7 +539,7 @@ export default function App() {
     } catch (err) {
       console.error("Error publishing meme to cloud:", err);
       // Fallback: post to server
-      fetch("/api/memes", {
+      fetch(apiUrl("/api/memes"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(memePayload),
