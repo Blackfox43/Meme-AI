@@ -34,12 +34,13 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
+      # Do NOT use cache: gradle here — the android/ Gradle project is created
+      # later by `npx cap add android`, so there are no *.gradle files yet.
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
-          cache: gradle
 
       - name: Install npm dependencies
         run: npm ci
@@ -71,7 +72,6 @@ jobs:
             https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           rm -rf "$SDK_ROOT/cmdline-tools/latest"
           unzip -q /tmp/cmdline-tools.zip -d "$SDK_ROOT/cmdline-tools"
-          # Zip contains a top-level "cmdline-tools" folder
           if [ -d "$SDK_ROOT/cmdline-tools/cmdline-tools" ]; then
             mv "$SDK_ROOT/cmdline-tools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
           fi
@@ -79,7 +79,6 @@ jobs:
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
-          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
 
       - name: Accept licenses & install SDK packages
         run: |
@@ -90,20 +89,13 @@ jobs:
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
-          echo "sdk.dir=$ANDROID_HOME" > android_sdk_path.properties
 
       - name: Add Capacitor Android platform
         run: |
-          # Fresh android/ each run (not committed)
           rm -rf android
           npx cap add android
           npx cap sync android
-          # Point Gradle at the SDK we installed
-          if [ -f android/local.properties ]; then
-            echo "sdk.dir=$ANDROID_HOME" >> android/local.properties
-          else
-            echo "sdk.dir=$ANDROID_HOME" > android/local.properties
-          fi
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 
       - name: Build debug APK
         working-directory: android
