@@ -1,0 +1,128 @@
+name: Capacitor Android APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: "Backend API base URL for the APK (e.g. https://your-server.com). Leave empty for relative /api."
+        required: false
+        default: ""
+
+concurrency:
+  group: capacitor-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  JAVA_VERSION: "21"
+
+jobs:
+  apk:
+    name: Build debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Check Capacitor config
+        run: |
+          test -f capacitor.config.ts || test -f capacitor.config.json || (
+            echo "Missing capacitor.config.ts — upload it to the repo root" && exit 1
+          )
+          test -f package.json
+          node -e "const p=require('./package.json'); if(!p.scripts['build:web']) process.exit(1)"
+
+      - name: Build web assets (Vite)
+        env:
+          VITE_API_BASE_URL: ${{ github.event.inputs.api_base_url || '' }}
+        run: npm run build:web
+
+      - name: Verify web build
+        run: |
+          test -f dist/index.html || (echo "Missing dist/index.html" && exit 1)
+          ls -la dist/ | head -20
+
+      - name: Install Android SDK command-line tools
+        run: |
+          set -e
+          SDK_ROOT="${ANDROID_HOME:-$HOME/android-sdk}"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          curl -fsSL -o /tmp/cmdline-tools.zip \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          rm -rf "$SDK_ROOT/cmdline-tools/latest"
+          unzip -q /tmp/cmdline-tools.zip -d "$SDK_ROOT/cmdline-tools"
+          # Zip contains a top-level "cmdline-tools" folder
+          if [ -d "$SDK_ROOT/cmdline-tools/cmdline-tools" ]; then
+            mv "$SDK_ROOT/cmdline-tools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
+          fi
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+
+      - name: Accept licenses & install SDK packages
+        run: |
+          set -e
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses >/tmp/sdk-licenses.txt || true
+          "$SDKMANAGER" --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+          echo "sdk.dir=$ANDROID_HOME" > android_sdk_path.properties
+
+      - name: Add Capacitor Android platform
+        run: |
+          # Fresh android/ each run (not committed)
+          rm -rf android
+          npx cap add android
+          npx cap sync android
+          # Point Gradle at the SDK we installed
+          if [ -f android/local.properties ]; then
+            echo "sdk.dir=$ANDROID_HOME" >> android/local.properties
+          else
+            echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          fi
+
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Locate APK
+        id: find_apk
+        run: |
+          APK=$(find android -name "*.apk" -path "*debug*" | head -1)
+          echo "Found: $APK"
+          test -n "$APK" && test -f "$APK"
+          echo "apk_path=$APK" >> "$GITHUB_OUTPUT"
+          ls -lh "$APK"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: memeai-debug-apk-${{ github.sha }}
+          path: ${{ steps.find_apk.outputs.apk_path }}
+          retention-days: 14
