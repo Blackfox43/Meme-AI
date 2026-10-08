@@ -1,0 +1,85 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: "Backend API base URL baked into the APK (e.g. https://your-server.com). Leave empty for relative /api."
+        required: false
+        default: ""
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  JAVA_VERSION: "21"
+
+jobs:
+  apk:
+    name: Capacitor → Debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build web assets (Vite)
+        env:
+          # Optional: point the APK at a deployed Express backend
+          VITE_API_BASE_URL: ${{ github.event.inputs.api_base_url || '' }}
+        run: npm run build:web
+
+      - name: Verify web build
+        run: |
+          test -f dist/index.html || (echo "Missing dist/index.html" && exit 1)
+          ls -la dist/ | head -20
+
+      - name: Add Capacitor Android platform
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Locate APK
+        id: find_apk
+        run: |
+          APK=$(find android -name "*.apk" -path "*/debug/*" | head -1)
+          echo "Found: $APK"
+          test -n "$APK" && test -f "$APK"
+          echo "apk_path=$APK" >> "$GITHUB_OUTPUT"
+          ls -lh "$APK"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: memeai-debug-apk-${{ github.sha }}
+          path: ${{ steps.find_apk.outputs.apk_path }}
+          retention-days: 14

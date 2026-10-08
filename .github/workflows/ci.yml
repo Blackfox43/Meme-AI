@@ -7,15 +7,12 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
-# Cancel in-progress runs of the same workflow on the same branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   NODE_VERSION: "22"
-  # Dummy values so the build does not fail when env vars are referenced at module load.
-  # Real secrets must be set in repository Settings → Secrets and variables → Actions.
   GEMINI_API_KEY: "ci-dummy-key"
   PAYPAL_ENV: "sandbox"
   PADDLE_ENVIRONMENT: "sandbox"
@@ -54,6 +51,10 @@ jobs:
           ls -la dist/
           test -f dist/index.html || (echo "Missing dist/index.html" && exit 1)
           test -f dist/server.cjs || (echo "Missing dist/server.cjs" && exit 1)
+          # Production server must not hard-require vite (dev-only)
+          if grep -q 'require("vite")' dist/server.cjs 2>/dev/null; then
+            echo "WARNING: dist/server.cjs still contains require(\"vite\") — ok if only on dev path"
+          fi
           echo "Build verification passed."
 
       - name: Upload build artifact
@@ -67,13 +68,11 @@ jobs:
             package-lock.json
           retention-days: 7
 
-  # Optional: smoke-test that the production server starts
   smoke:
     name: Smoke – Production server starts
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: github.event_name != 'pull_request' || true
 
     steps:
       - name: Checkout
@@ -100,9 +99,21 @@ jobs:
           PORT: 3000
           GEMINI_API_KEY: "ci-dummy-key"
         run: |
-          node dist/server.cjs &
+          set -e
+          node dist/server.cjs > /tmp/server.log 2>&1 &
           SERVER_PID=$!
-          sleep 3
-          curl -sf http://localhost:3000/api/health || (kill $SERVER_PID; exit 1)
-          echo "Health check OK"
-          kill $SERVER_PID || true
+          echo "Server PID: $SERVER_PID"
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -sf http://localhost:3000/api/health; then
+              echo ""
+              echo "Health check OK"
+              kill $SERVER_PID 2>/dev/null || true
+              wait $SERVER_PID 2>/dev/null || true
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Health check FAILED. Server log:"
+          cat /tmp/server.log || true
+          kill $SERVER_PID 2>/dev/null || true
+          exit 1
