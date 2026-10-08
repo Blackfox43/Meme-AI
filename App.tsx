@@ -10,8 +10,8 @@ import { PricingModal } from "./components/PricingModal";
 import { Meme, DailyChallenge } from "./types";
 import { geminiService } from "./services/geminiService";
 import { getTodayDailyChallenge, MOCK_FEED } from "./constants";
-import {
 import { apiUrl } from "./src/apiBase";
+import {
   auth,
   loginWithGoogle,
   logoutUser,
@@ -351,7 +351,7 @@ export default function App() {
       // 1. Update Firestore Cloud Database
       await likeMemeInCloud(id);
       // 2. Also notify local server
-      fetch(`/api/memes/${id}/like`, { method: "POST" }).catch(() => {});
+      fetch(apiUrl(`/api/memes/${id}/like`), { method: "POST" }).catch(() => {});
     } catch (err) {
       console.error("Error liking meme in cloud:", err);
     }
