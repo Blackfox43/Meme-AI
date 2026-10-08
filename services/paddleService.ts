@@ -1,3 +1,4 @@
+import { apiUrl } from "../src/apiBase";
 // Paddle Billing Service for MemeAI
 
 export interface PaddleConfig {
@@ -67,7 +68,7 @@ class PaddleService {
   async getConfig(): Promise<PaddleConfig> {
     if (this.config) return this.config;
     try {
-      const res = await fetch("/api/paddle/config");
+      const res = await fetch(apiUrl("/api/paddle/config"));
       const data = await res.json();
       this.config = data;
       return data;
@@ -151,7 +152,7 @@ class PaddleService {
     }
 
     // 2. Call backend transaction endpoint
-    const res = await fetch("/api/paddle/create-checkout", {
+    const res = await fetch(apiUrl("/api/paddle/create-checkout"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -180,7 +181,7 @@ class PaddleService {
 
   async verifyTransaction(transactionId: string, plan: "annual" | "monthly", uid?: string) {
     try {
-      const res = await fetch("/api/paddle/verify-order", {
+      const res = await fetch(apiUrl("/api/paddle/verify-order"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transactionId, plan, uid }),

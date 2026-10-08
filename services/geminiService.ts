@@ -1,3 +1,4 @@
+import { apiUrl } from "../src/apiBase";
 import { HumorStyle, AIResponse } from "../types";
 
 export class GeminiService {
@@ -8,7 +9,7 @@ export class GeminiService {
     context?: string
   ): Promise<AIResponse> {
     try {
-      const response = await fetch("/api/generate-caption", {
+      const response = await fetch(apiUrl("/api/generate-caption"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image: imageBuffer, style, context })
@@ -26,7 +27,7 @@ export class GeminiService {
     context?: string
   ): Promise<{ topText: string; bottomText: string; style: string; pitch?: string }[]> {
     try {
-      const response = await fetch("/api/generate-captions-multi", {
+      const response = await fetch(apiUrl("/api/generate-captions-multi"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image: imageBuffer, context })
@@ -44,7 +45,7 @@ export class GeminiService {
   }
 
   async reactToMeme(id: string, emoji: string) {
-    const response = await fetch(`/api/memes/${id}/react`, {
+    const response = await fetch(apiUrl(`/api/memes/${id}/react`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ emoji })
@@ -54,7 +55,7 @@ export class GeminiService {
   }
 
   async commentOnMeme(id: string, author: string, text: string) {
-    const response = await fetch(`/api/memes/${id}/comment`, {
+    const response = await fetch(apiUrl(`/api/memes/${id}/comment`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ author, text })
@@ -64,7 +65,7 @@ export class GeminiService {
   }
 
   async deleteMeme(id: string) {
-    const response = await fetch(`/api/memes/${id}`, {
+    const response = await fetch(apiUrl(`/api/memes/${id}`), {
       method: "DELETE"
     });
     if (!response.ok) throw new Error("Failed to delete meme");
@@ -73,7 +74,7 @@ export class GeminiService {
 
   async generateMemeBase(prompt: string): Promise<string> {
     try {
-      const response = await fetch("/api/generate-base", {
+      const response = await fetch(apiUrl("/api/generate-base"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt })
@@ -90,7 +91,7 @@ export class GeminiService {
   async generateVideoMeme(prompt: string): Promise<string> {
     try {
       // Step 1: Start video generation or receive direct video template
-      const initRes = await fetch("/api/generate-video", {
+      const initRes = await fetch(apiUrl("/api/generate-video"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt })
@@ -117,7 +118,7 @@ export class GeminiService {
         attempts++;
         // Wait 8 seconds before polling (long-running video)
         await new Promise(resolve => setTimeout(resolve, 8000));
-        const statusRes = await fetch("/api/video-status", {
+        const statusRes = await fetch(apiUrl("/api/video-status"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ operationName })
@@ -128,7 +129,7 @@ export class GeminiService {
       }
 
       // Step 3: Download finished video
-      const downloadRes = await fetch("/api/video-download", {
+      const downloadRes = await fetch(apiUrl("/api/video-download"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ operationName })
@@ -156,7 +157,7 @@ export class GeminiService {
 
   async generateMemeSpeech(text: string, voice: "Kore" | "Puck" | "Charon" = "Kore"): Promise<AudioBuffer> {
     try {
-      const response = await fetch("/api/narrate", {
+      const response = await fetch(apiUrl("/api/narrate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, voice })
@@ -189,7 +190,7 @@ export class GeminiService {
 
   async getTrendingContext(): Promise<string[]> {
     try {
-      const response = await fetch("/api/trending");
+      const response = await fetch(apiUrl("/api/trending"));
       if (!response.ok) throw new Error("Failed to fetch trending context");
       return await response.json();
     } catch (error) {
@@ -203,7 +204,7 @@ export class GeminiService {
     imageBase64?: string
   ): Promise<{ safe: boolean; reason?: string; flagCategory?: string }> {
     try {
-      const response = await fetch("/api/moderate-content", {
+      const response = await fetch(apiUrl("/api/moderate-content"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: captionText, image: imageBase64 }),
