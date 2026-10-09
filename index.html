@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1">
     <title>MemeAI - AI Powered Meme Factory</title>
     <meta name="description" content="An AI-powered meme creator that turns your photos into viral content using advanced context-aware captioning and trending templates.">
     <meta property="og:title" content="MemeAI - AI Powered Meme Factory">
@@ -12,7 +12,7 @@
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="MemeAI - AI Powered Meme Factory">
     <meta name="twitter:description" content="An AI-powered meme creator that turns your photos into viral content using advanced context-aware captioning and trending templates.">
-    <meta name="theme-color" content="#0f172a">
+    <meta name="theme-color" content="#070b14">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
@@ -20,10 +20,19 @@
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Anton&family=Bangers&family=Comic+Neue:wght@700&family=Inter:wght@400;600;800&family=Oswald:wght@700&family=Permanent+Marker&family=Space+Grotesk:wght@700&display=swap');
       
-      body {
+      html, body {
         font-family: 'Inter', sans-serif;
-        background-color: #0f172a;
+        background-color: #070b14;
         color: white;
+        margin: 0;
+        padding: 0;
+        min-height: 100%;
+        min-height: 100dvh;
+        overscroll-behavior-y: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #root {
+        min-height: 100dvh;
       }
 
       .meme-font {
@@ -32,16 +41,63 @@
         -webkit-text-stroke: 1.5px black;
       }
 
-      /* Custom scrollbar for gallery */
-      ::-webkit-scrollbar {
-        width: 6px;
+      /* Premium surface */
+      .glass {
+        background: linear-gradient(165deg, rgba(30, 41, 59, 0.75) 0%, rgba(15, 23, 42, 0.9) 100%);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(148, 163, 184, 0.12);
+        box-shadow:
+          0 0 0 1px rgba(255,255,255,0.03) inset,
+          0 20px 40px -20px rgba(0,0,0,0.55),
+          0 0 60px -30px rgba(168, 85, 247, 0.15);
       }
-      ::-webkit-scrollbar-track {
-        background: transparent;
+      .glass-strong {
+        background: linear-gradient(160deg, rgba(51, 65, 85, 0.45) 0%, rgba(15, 23, 42, 0.92) 55%, rgba(88, 28, 135, 0.12) 100%);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        border: 1px solid rgba(168, 85, 247, 0.18);
+        box-shadow:
+          0 0 0 1px rgba(255,255,255,0.04) inset,
+          0 24px 48px -16px rgba(0,0,0,0.6),
+          0 0 80px -20px rgba(236, 72, 153, 0.12);
       }
+      .premium-input {
+        background: rgba(15, 23, 42, 0.85);
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        box-shadow: 0 0 0 1px rgba(255,255,255,0.02) inset, 0 8px 24px -12px rgba(0,0,0,0.4);
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
+      .premium-input:focus {
+        border-color: rgba(168, 85, 247, 0.55);
+        box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.15), 0 8px 24px -12px rgba(0,0,0,0.4);
+        outline: none;
+      }
+      .text-premium {
+        background: linear-gradient(105deg, #e9d5ff 0%, #f9a8d4 40%, #fcd34d 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .mesh-bg {
+        background-color: #070b14;
+        background-image:
+          radial-gradient(ellipse 80% 50% at 50% -20%, rgba(124, 58, 237, 0.22), transparent),
+          radial-gradient(ellipse 60% 40% at 100% 50%, rgba(236, 72, 153, 0.08), transparent),
+          radial-gradient(ellipse 50% 30% at 0% 80%, rgba(59, 130, 246, 0.06), transparent);
+      }
+      .scrollbar-hide::-webkit-scrollbar { display: none; }
+      .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+      ::-webkit-scrollbar { width: 5px; height: 5px; }
+      ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb {
-        background: #334155;
+        background: linear-gradient(180deg, #7c3aed, #db2777);
         border-radius: 10px;
+      }
+      ::selection {
+        background: rgba(168, 85, 247, 0.35);
+        color: #fff;
       }
     </style>
 <script type="importmap">
