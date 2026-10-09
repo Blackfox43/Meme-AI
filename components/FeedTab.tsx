@@ -129,7 +129,7 @@ export const FeedTab: React.FC<FeedTabProps> = ({
   };
 
   return (
-    <div className="p-4 space-y-6 animate-in fade-in slide-in-from-bottom-4 pb-24">
+    <div className="p-4 space-y-5 animate-in fade-in duration-300">
       {/* Search and Filters Section */}
       <div id="feed-search-section" className="space-y-3">
         {/* Real-time Search Bar */}
@@ -137,10 +137,10 @@ export const FeedTab: React.FC<FeedTabProps> = ({
           <input
             id="feed-search-input"
             type="text"
-            placeholder="Search captions, @creators, or #hashtags in real-time..."
+            placeholder="Search captions, @creators, #tags..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-800/90 border border-slate-700/80 rounded-2xl pl-11 pr-11 py-3 text-xs focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition-all text-white placeholder-slate-400 shadow-inner"
+            className="premium-input w-full rounded-2xl pl-11 pr-11 py-3.5 text-xs text-white placeholder-slate-500"
           />
           <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-purple-400 text-xs group-focus-within:text-purple-300"></i>
           {searchTerm && (
@@ -169,8 +169,8 @@ export const FeedTab: React.FC<FeedTabProps> = ({
                 onClick={() => setSearchTerm(isTagActive ? "" : tag)}
                 className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all whitespace-nowrap border active:scale-95 ${
                   isTagActive
-                    ? "bg-purple-600 border-purple-400 text-white shadow-md shadow-purple-600/30 scale-105"
-                    : "bg-slate-800/60 border-slate-700/50 text-purple-300 hover:border-purple-500/50 hover:bg-slate-800"
+                    ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 border-violet-400/50 text-white shadow-lg shadow-violet-600/25"
+                    : "bg-white/[0.04] border-white/10 text-violet-200/90 hover:border-violet-400/40 hover:bg-white/[0.07]"
                 }`}
               >
                 {tag}
@@ -189,8 +189,8 @@ export const FeedTab: React.FC<FeedTabProps> = ({
                 onClick={() => setSelectedStyle(style)}
                 className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase transition-all whitespace-nowrap border active:scale-95 ${
                   selectedStyle === style
-                    ? "bg-purple-600 border-purple-500 text-white shadow-lg shadow-purple-500/20"
-                    : "bg-slate-800/40 border-slate-700/40 text-slate-400 hover:border-slate-600"
+                    ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 border-transparent text-white shadow-lg shadow-violet-500/25"
+                    : "bg-white/[0.04] border-white/10 text-slate-400 hover:border-white/20"
                 }`}
               >
                 {style}
@@ -223,7 +223,7 @@ export const FeedTab: React.FC<FeedTabProps> = ({
         {filteredFeed.length === 0 ? (
           <div
             id="feed-no-results-state"
-            className="py-14 text-center text-slate-500 italic space-y-3 bg-slate-900/40 rounded-3xl border border-slate-800/70 p-6"
+            className="py-14 text-center text-slate-500 italic space-y-3 glass rounded-[1.35rem] p-6"
           >
             <i className="fa-solid fa-filter-circle-xmark text-4xl text-slate-600 animate-pulse"></i>
             <p className="text-sm font-semibold text-slate-300">
@@ -257,7 +257,7 @@ export const FeedTab: React.FC<FeedTabProps> = ({
               <div
                 key={`${meme.id}-${idx}`}
                 id={`feed-meme-card-${meme.id}`}
-                className="bg-slate-800/40 rounded-3xl p-4 border border-slate-700/50 space-y-3.5 hover:border-purple-500/40 transition-all duration-300 shadow-xl"
+                className="glass-strong rounded-[1.35rem] p-4 space-y-3.5 transition-all duration-300 hover:border-violet-400/35"
               >
                 {/* Creator Info Header */}
                 <div className="flex items-center justify-between">

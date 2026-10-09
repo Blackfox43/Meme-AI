@@ -141,10 +141,10 @@ export const LeadersTab: React.FC<LeadersTabProps> = ({
   };
 
   return (
-    <div className="p-4 space-y-6 animate-in fade-in slide-in-from-bottom-4 pb-24">
+    <div className="p-4 space-y-5 animate-in fade-in duration-300">
       {/* Top Header */}
       <div className="text-center space-y-1">
-        <h2 className="text-xl font-black tracking-tighter italic bg-clip-text text-transparent bg-gradient-to-r from-amber-400 via-purple-400 to-pink-500">
+        <h2 className="text-xl font-black tracking-tighter italic text-premium">
           TRENDS &amp; CHALLENGES
         </h2>
         <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">
@@ -155,7 +155,7 @@ export const LeadersTab: React.FC<LeadersTabProps> = ({
       {/* Featured Daily Challenge Card */}
       <div
         id="daily-challenge-card"
-        className="relative overflow-hidden bg-gradient-to-b from-purple-950/60 via-slate-900 to-slate-900/90 border-2 border-purple-500/50 rounded-3xl p-5 shadow-2xl space-y-4 transition-all hover:border-purple-400"
+        className="relative overflow-hidden glass-strong rounded-[1.5rem] p-5 space-y-4 transition-all ring-1 ring-violet-400/20"
       >
         {/* Glow Accent Background */}
         <div className="absolute -top-12 -right-12 w-36 h-36 bg-purple-600/20 rounded-full blur-3xl pointer-events-none"></div>
